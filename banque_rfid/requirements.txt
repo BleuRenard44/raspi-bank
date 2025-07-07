@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+sqlite3-binary; sys_platform == "linux"
+spidev
+RPi.GPIO
+mfrc522
+luma.oled
+Pillow
