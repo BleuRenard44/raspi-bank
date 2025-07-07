@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body
 from db import get_db
 from models import Purchase
-import RPi.GPIO as GPIO
+import lgpio as GPIO
 from mfrc522 import SimpleMFRC522
 
 router = APIRouter()

@@ -1,4 +1,4 @@
-import RPi.GPIO as GPIO
+import lgpio as GPIO
 from mfrc522 import SimpleMFRC522
 
 reader = SimpleMFRC522()
