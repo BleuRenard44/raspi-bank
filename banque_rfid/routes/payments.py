@@ -1,8 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 from db import get_db
 from models import Purchase
+import RPi.GPIO as GPIO
+from mfrc522 import SimpleMFRC522
 
 router = APIRouter()
+reader = SimpleMFRC522()
 
 @router.post("/purchase")
 def purchase(p: Purchase):
@@ -21,3 +24,30 @@ def purchase(p: Purchase):
     cur.execute("UPDATE accounts SET solde = solde - ? WHERE rfid_uid = ?", (prod["price"], p.rfid_uid))
     conn.commit()
     return {"status": "purchase complete"}
+
+@router.get("/rfid/read")
+def read_rfid():
+    """
+    Attend et lit une carte RFID.
+    Retourne l'UID et le texte stocké sur la carte.
+    """
+    try:
+        uid, text = reader.read()
+        return {"uid": uid, "text": text.strip()}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        GPIO.cleanup()
+
+@router.post("/rfid/write")
+def write_rfid(message: str = Body(..., embed=True)):
+    """
+    Attend une carte RFID et écrit le message fourni dessus.
+    """
+    try:
+        reader.write(message)
+        return {"status": "Message written successfully"}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        GPIO.cleanup()
