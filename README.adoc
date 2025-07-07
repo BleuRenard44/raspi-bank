@@ -1,0 +1,55 @@
+= Banque RFID - Raspberry Pi + Frontend Web
+
+Ce projet permet de créer un système de gestion de cartes RFID connecté à un Raspberry Pi 5.  
+Vous pouvez créer des comptes, recharger une carte, effectuer des achats, et gérer les produits via une interface web.
+
+== 📦 Contenu du projet
+
+* `banque_rfid/` → Backend Python avec FastAPI, gestion RFID, écran OLED, base de données SQLite.
+* `frontend/` → Interface HTML/JS à lancer sur votre PC (navigateur).
+* `requirements.txt` → Dépendances Python à installer sur le Raspberry Pi.
+
+== 🚀 Lancement (côté Raspberry Pi)
+
+1. Connectez les composants :
+   - Module MFRC522 (SPI)
+   - Écran OLED (I2C)
+2. Activez SPI et I2C avec `sudo raspi-config`.
+3. Installez Python et les dépendances :
+
+```bash
+sudo apt update
+sudo apt install python3-pip python3-dev
+pip install -r banque_rfid/requirements.txt
+```
+
+4. Lancez le serveur FastAPI :
+
+```bash
+cd banque_rfid
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+5. Vérifiez que le port 8000 est accessible depuis le PC (via IP locale ou `raspberrypi.local`).
+
+== 🌐 Lancement de l’interface Web (sur le PC)
+
+1. Ouvrez `frontend/index.html` dans un navigateur moderne.
+2. L’interface appellera automatiquement le Raspberry Pi via `http://raspberrypi.local:8000`.
+   > ⚠️ Modifiez l'adresse dans le fichier si besoin (`const api = "..."` dans le JavaScript).
+
+== 🧪 Exemple de test
+
+* Créez un compte avec un UID RFID (ex: 0xA4B33C1D)
+* Rechargez le compte avec 10€
+* Ajoutez un produit (via API si besoin)
+* Achetez un produit en simulant un scan avec l’UID
+
+== 📁 Base de données
+
+Une base SQLite `database.db` sera créée automatiquement.
+
+== 📬 Questions ?
+
+Ce projet est prévu pour être simple et adaptable.
+Ajoutez des WebSocket, une gestion des historiques ou une authentification selon vos besoins.
