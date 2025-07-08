@@ -1,12 +1,9 @@
-import gpiozero as GPIO
-from mfrc522 import MFRC522
+from rc522_spi_library import RC522SPILibrary
 
-reader = MFRC522()
+reader = RC522SPILibrary()
 
 def read_uid():
-    try:
-        print("Scan a card...")
-        uid, _ = reader.read()
-        return hex(uid)
-    finally:
-        GPIO.cleanup()
+    uid = reader.read_uid()
+    if uid is None:
+        return None
+    return ''.join(f"{b:02X}" for b in uid)

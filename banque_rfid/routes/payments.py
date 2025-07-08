@@ -2,10 +2,9 @@ from fastapi import APIRouter, Body
 from db import get_db
 from models import Purchase
 import lgpio as GPIO
-from mfrc522 import SimpleMFRC522
+from rfid import read_uid
 
 router = APIRouter()
-reader = SimpleMFRC522()
 
 @router.post("/purchase")
 def purchase(p: Purchase):
@@ -32,8 +31,8 @@ def read_rfid():
     Retourne l'UID et le texte stocké sur la carte.
     """
     try:
-        uid, text = reader.read()
-        return {"uid": uid, "text": text.strip()}
+        uid = read_uid()
+        return {"status": "success", "uid": uid}
     except Exception as e:
         return {"error": str(e)}
     finally:
