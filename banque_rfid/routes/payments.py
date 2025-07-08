@@ -15,8 +15,6 @@ def scan_uid():
         return {"uid": uid}
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        GPIO.cleanup()
 
 @router.post("/write_card")
 def write_card(data: dict = Body(...)):
@@ -32,8 +30,6 @@ def write_card(data: dict = Body(...)):
         return {"status": "Message written successfully"}
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        GPIO.cleanup()
 
 @router.post("/purchase")
 def purchase(p: Purchase):
