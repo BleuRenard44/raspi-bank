@@ -26,6 +26,14 @@ def create_account(account: AccountCreate):
     conn.commit()
     return {"status": "Compte créé"}
 
+@app.get("/accounts")
+def list_accounts():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM accounts")
+    rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
 @app.delete("/accounts/{uid}")
 def delete_account(uid: str):
     conn = get_db()
@@ -50,6 +58,14 @@ def create_product(product: ProductCreate):
     conn.commit()
     return {"status": "Produit créé"}
 
+@app.get("/products")
+def list_products():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM products")
+    rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
 @app.delete("/products/{product_id}")
 def delete_product(product_id: int):
     conn = get_db()
@@ -57,13 +73,6 @@ def delete_product(product_id: int):
     cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
     conn.commit()
     return {"status": "Produit supprimé"}
-
-@app.get("/products")
-def list_products():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM products")
-    return cur.fetchall()
 
 @app.post("/purchase")
 def purchase(purchase: Purchase):
