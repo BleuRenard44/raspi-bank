@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from db import get_db
 from models import ProductCreate
 
@@ -18,3 +18,14 @@ def list_products():
     cur = conn.cursor()
     cur.execute("SELECT * FROM products")
     return cur.fetchall()
+
+@router.delete("/{product_id}")
+def delete_product(product_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+    if not cur.fetchone():
+        raise HTTPException(status_code=404, detail="Product not found")
+    cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
+    conn.commit()
+    return {"status": "deleted"}
