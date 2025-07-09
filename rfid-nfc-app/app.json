@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "rfid-nfc-app",
+    "slug": "rfid-nfc-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["NFC"],
+      "usesFeatures": [
+        {
+          "android:name": "android.hardware.nfc",
+          "android:required": true
+        }
+      ],
+      "package": "com.bleurenard.rfidnfcapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "react-native-nfc-manager"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e9a076a2-8570-488e-9279-e33dad337513"
+      }
+    }
+  }
+}

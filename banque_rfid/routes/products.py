@@ -16,8 +16,10 @@ def create_product(prod: ProductCreate):
 def list_products():
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM products")
-    return cur.fetchall()
+    cur.execute("SELECT id, name, price FROM products")
+    rows = cur.fetchall()
+    # Retourner en JSON friendly (liste de dicts)
+    return [{"id": r[0], "name": r[1], "price": r[2]} for r in rows]
 
 @router.delete("/{product_id}")
 def delete_product(product_id: int):
