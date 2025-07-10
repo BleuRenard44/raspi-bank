@@ -49,7 +49,6 @@ export default function App() {
     try {
       await NfcManager.cancelTechnologyRequest();
       await NfcManager.requestTechnology(NfcTech.Ndef);
-      await NfcManager.ndefHandler.erase();
       const bytes = Ndef.encodeMessage([Ndef.textRecord(text)]);
       await NfcManager.ndefHandler.writeNdefMessage(bytes);
       await new Promise((resolve) => setTimeout(resolve, 600));
@@ -63,28 +62,21 @@ export default function App() {
     }
   }
 
-  async function readCodeFromCard() {
+  async function readUidFromCard() {
     try {
       await NfcManager.cancelTechnologyRequest();
       await NfcManager.requestTechnology(NfcTech.Ndef);
       const tag = await NfcManager.getTag();
-      const ndefMessage = tag.ndefMessage;
-      if (ndefMessage && ndefMessage.length > 0) {
-        const textRecord = Ndef.text.decodePayload(ndefMessage[0].payload);
-        return textRecord;
-      }
-      return null;
+      return tag?.id || null;
     } catch (err) {
-      Alert.alert("Erreur NFC", "Lecture du code échouée: " + err.message);
+      Alert.alert("Erreur NFC", "Lecture UID échouée: " + err.message);
       return null;
     } finally {
       await NfcManager.cancelTechnologyRequest();
     }
   }
 
-  // Modal pour créer un compte
   function ModalCreateAccount({ onClose }) {
-    const [code, setCode] = useState("");
     const [nom, setNom] = useState("");
     const [prenom, setPrenom] = useState("");
     const [adresse, setAdresse] = useState("");
@@ -93,15 +85,14 @@ export default function App() {
 
     async function onWrite() {
       if (loading) return;
-      if (!code || code.length !== 6) {
-        return Alert.alert("Erreur", "Le code doit contenir exactement 6 caractères");
-      }
       if (!nom || !prenom || !adresse) {
         return Alert.alert("Erreur", "Veuillez remplir tous les champs");
       }
 
       setLoading(true);
-      setMessageLocal("Approchez la carte NFC pour écrire le code...");
+      setMessageLocal("Approche la carte NFC...");
+
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
       const success = await writeNfc(code);
       if (!success) {
@@ -110,44 +101,72 @@ export default function App() {
         return;
       }
 
-      Alert.alert("Succès", "Code écrit sur la carte");
+      Alert.alert(
+        "Succès",
+        `Code "${code}" écrit sur la carte.\n\nRetirez puis remettez la carte pour la lecture.`
+      );
+
+      setMessageLocal("En attente de lecture...");
 
       try {
+        await NfcManager.cancelTechnologyRequest();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        await NfcManager.requestTechnology(NfcTech.Ndef);
+        const tag = await NfcManager.getTag();
+
+        if (!tag?.ndefMessage?.length) throw new Error("Aucun message trouvé");
+
+        const payload = tag.ndefMessage[0].payload;
+        const langLength = payload[0];
+        const readCode = String.fromCharCode(...payload.slice(1 + langLength)).trim();
+
+        if (!readCode || readCode.length !== 6) {
+          throw new Error("Code NFC invalide : " + readCode);
+        }
+
         const res = await fetch(`${apiBase}/accounts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rfid_uid: code, nom, prenom, adresse }),
+          body: JSON.stringify({
+            rfid_uid: readCode,
+            nom,
+            prenom,
+            adresse,
+          }),
         });
-        if (!res.ok) {
-          const errJson = await res.json();
-          throw new Error(errJson.detail || "Erreur création compte");
-        }
-        await res.json();
-        Alert.alert("Serveur", "Compte créé avec succès");
+
+        const json = await res.json();
+        Alert.alert("Compte créé", `Code : ${readCode}\n${json.message || ""}`);
         fetchAccounts();
         onClose();
       } catch (e) {
-        Alert.alert("Erreur serveur", e.message);
+        Alert.alert("Erreur", e.message);
       } finally {
         setLoading(false);
         setMessageLocal("");
+        await NfcManager.cancelTechnologyRequest();
       }
     }
 
     return (
       <View style={styles.modalContent}>
         <Text style={styles.modalTitle}>Créer un compte</Text>
+        <TextInput placeholder="Nom" style={styles.input} value={nom} onChangeText={setNom} editable={!loading} />
         <TextInput
-          placeholder="Code (6 caractères)"
+          placeholder="Prénom"
           style={styles.input}
-          value={code}
-          onChangeText={setCode}
-          maxLength={6}
+          value={prenom}
+          onChangeText={setPrenom}
           editable={!loading}
         />
-        <TextInput placeholder="Nom" style={styles.input} value={nom} onChangeText={setNom} editable={!loading} />
-        <TextInput placeholder="Prénom" style={styles.input} value={prenom} onChangeText={setPrenom} editable={!loading} />
-        <TextInput placeholder="Adresse" style={styles.input} value={adresse} onChangeText={setAdresse} editable={!loading} />
+        <TextInput
+          placeholder="Adresse"
+          style={styles.input}
+          value={adresse}
+          onChangeText={setAdresse}
+          editable={!loading}
+        />
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
           onPress={onWrite}
@@ -163,24 +182,18 @@ export default function App() {
     );
   }
 
-  // Modal pour ajouter un produit
   function ModalAddProduct({ onClose }) {
-    const [name, setName] = useState("");
-    const [price, setPrice] = useState("");
+    const [nom, setNom] = useState("");
+    const [prix, setPrix] = useState("");
 
     async function handleAdd() {
-      if (!name || !price) return Alert.alert("Erreur", "Remplir tous les champs");
+      if (!nom || !prix) return Alert.alert("Erreur", "Remplir tous les champs");
       try {
-        const res = await fetch(`${apiBase}/products`, {
+        await fetch(`${apiBase}/products`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, price: parseFloat(price) }),
+          body: JSON.stringify({ nom, prix: parseFloat(prix) }),
         });
-        if (!res.ok) {
-          const errJson = await res.json();
-          throw new Error(errJson.detail || "Erreur ajout produit");
-        }
-        await res.json();
         fetchProducts();
         onClose();
       } catch (e) {
@@ -191,13 +204,13 @@ export default function App() {
     return (
       <View style={styles.modalContent}>
         <Text style={styles.modalTitle}>Ajouter un produit</Text>
-        <TextInput placeholder="Nom" style={styles.input} value={name} onChangeText={setName} />
+        <TextInput placeholder="Nom" style={styles.input} value={nom} onChangeText={setNom} />
         <TextInput
           placeholder="Prix (€)"
           style={styles.input}
           keyboardType="decimal-pad"
-          value={price}
-          onChangeText={setPrice}
+          value={prix}
+          onChangeText={setPrix}
         />
         <TouchableOpacity style={styles.button} onPress={handleAdd}>
           <Text style={styles.buttonText}>Ajouter</Text>
@@ -209,39 +222,23 @@ export default function App() {
     );
   }
 
-  // Modal pour faire un achat
   function ModalMakePurchase({ onClose }) {
     const [selectedProductId, setSelectedProductId] = useState(null);
     const [message, setMessage] = useState("");
 
     async function handlePurchase() {
       if (!selectedProductId) return Alert.alert("Erreur", "Sélectionner un produit");
-      setMessage("Approcher la carte...");
-      const code = await readCodeFromCard();
-      if (!code) {
-        setMessage("");
-        return;
-      }
+      setMessage("Approcher carte...");
+      const uid = await readUidFromCard();
+      if (!uid) return;
       try {
         const res = await fetch(`${apiBase}/purchase`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rfid_uid: code, product_id: selectedProductId }),
+          body: JSON.stringify({ rfid_uid: uid, product_id: selectedProductId }),
         });
-        const text = await res.text(); // on lit en texte brut
-        console.log("Réponse du serveur:", text); // DEBUG : voir la vraie réponse
-        if (!res.ok) {
-          // essaie de parser un JSON en cas d'erreur, sinon affiche texte brut
-          try {
-            const errJson = JSON.parse(text);
-            throw new Error(errJson.detail || "Erreur achat");
-          } catch {
-            throw new Error(text || "Erreur achat");
-          }
-        }
-        // si ok, on parse le JSON
-        const result = JSON.parse(text);
-        Alert.alert("Achat", result.status || "Achat effectué");
+        const result = await res.json();
+        Alert.alert("Achat", result.message || JSON.stringify(result));
         fetchAccounts();
         onClose();
       } catch (e) {
@@ -251,21 +248,22 @@ export default function App() {
       }
     }
 
-
     return (
       <View style={styles.modalContent}>
         <Text style={styles.modalTitle}>Achat produit</Text>
-        {products.map((p) => (
-          <TouchableOpacity
-            key={p.id}
-            onPress={() => setSelectedProductId(p.id)}
-            style={[styles.listItem, selectedProductId === p.id && styles.selectedItem]}
-          >
-            <Text>
-              {p.name} - {p.price}€
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <ScrollView style={{ maxHeight: 250 }}>
+          {products.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => setSelectedProductId(p.id)}
+              style={[styles.listItem, selectedProductId === p.id && styles.selectedItem]}
+            >
+              <Text>
+                {p.nom} - {p.prix}€
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
         <TouchableOpacity style={styles.button} onPress={handlePurchase}>
           <Text style={styles.buttonText}>Acheter</Text>
         </TouchableOpacity>
@@ -277,178 +275,218 @@ export default function App() {
     );
   }
 
-  // Modal pour recharger un compte
+  // Nouvelle ModalRechargeAccount en 3 étapes NFC pour recharge
   function ModalRechargeAccount({ onClose }) {
+    const [step, setStep] = useState(1);
+    const [uid, setUid] = useState(null);
     const [montant, setMontant] = useState("");
-    const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    async function handleRecharge() {
-      if (loading) return;
-
-      const value = parseFloat(montant.replace(",", "."));
-      if (isNaN(value) || value <= 0) {
-        return Alert.alert("Erreur", "Veuillez saisir un montant valide supérieur à 0");
-      }
-
-      setLoading(true);
+    async function readCardUid() {
       setMessage("Approchez la carte NFC...");
+      const cardUid = await readUidFromCard();
+      if (cardUid) {
+        setUid(cardUid);
+        setMessage(`Carte détectée : ${cardUid}`);
+        setStep(2);
+      } else {
+        setMessage("Lecture NFC échouée");
+      }
+    }
 
+    async function confirmRecharge() {
+      if (!montant || isNaN(parseFloat(montant)) || parseFloat(montant) <= 0) {
+        return Alert.alert("Erreur", "Montant invalide");
+      }
+      setLoading(true);
       try {
-        const code = await readCodeFromCard();
-        if (!code) {
-          setMessage("");
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`${apiBase}/accounts/${code}/recharge`, {
+        const res = await fetch(`${apiBase}/accounts/recharge`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ montant: value }),
+          body: JSON.stringify({ rfid_uid: uid, montant: parseFloat(montant) }),
         });
-
-        if (!res.ok) {
-          const errJson = await res.json();
-          throw new Error(errJson.detail || "Erreur lors de la recharge");
-        }
-
-        await res.json();
-        Alert.alert("Succès", `Compte rechargé de ${value.toFixed(2)} €`);
-        setMontant("");
+        const json = await res.json();
+        Alert.alert("Rechargement", json.message || "Rechargement effectué");
         fetchAccounts();
         onClose();
       } catch (e) {
         Alert.alert("Erreur", e.message);
       } finally {
-        setMessage("");
         setLoading(false);
       }
     }
 
     return (
       <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>Recharger un compte</Text>
-        <TextInput
-          placeholder="Montant (€)"
-          style={styles.input}
-          keyboardType="decimal-pad"
-          value={montant}
-          onChangeText={setMontant}
-          editable={!loading}
-        />
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleRecharge}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>{loading ? "En cours..." : "Approcher la carte pour recharger"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, styles.cancelButton]}
-          onPress={onClose}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Annuler</Text>
-        </TouchableOpacity>
-        <Text style={styles.message}>{message}</Text>
+        <Text style={styles.modalTitle}>Recharger compte</Text>
+        {step === 1 && (
+          <>
+            <TouchableOpacity style={styles.button} onPress={readCardUid}>
+              <Text style={styles.buttonText}>Lire la carte NFC</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
+              <Text style={styles.buttonText}>Annuler</Text>
+            </TouchableOpacity>
+            <Text style={styles.message}>{message}</Text>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <Text>Carte : {uid}</Text>
+            <TextInput
+              placeholder="Montant à recharger"
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={montant}
+              onChangeText={setMontant}
+              editable={!loading}
+            />
+            <TouchableOpacity style={styles.button} onPress={confirmRecharge} disabled={loading}>
+              <Text style={styles.buttonText}>{loading ? "Chargement..." : "Confirmer"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose} disabled={loading}>
+              <Text style={styles.buttonText}>Annuler</Text>
+            </TouchableOpacity>
+            <Text style={styles.message}>{message}</Text>
+          </>
+        )}
       </View>
     );
   }
 
-  // Ouvrir une modal avec contenu dynamique
-  function openModal(content) {
-    setModalContent(content);
-    setModalVisible(true);
-  }
+  function renderModal() {
+    if (!modalVisible || !modalContent) return null;
 
-  function closeModal() {
-    setModalVisible(false);
-    setModalContent(null);
+    const ModalComp = modalContent.component;
+    return (
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalBackground}>
+          <ModalComp onClose={() => setModalVisible(false)} />
+        </View>
+      </Modal>
+    );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Banque RFID</Text>
+      <Text style={styles.title}>Gestion des Comptes</Text>
+      <ScrollView style={{ flex: 1, width: "100%" }}>
+        {accounts.length === 0 ? (
+          <Text style={{ margin: 10 }}>Aucun compte trouvé.</Text>
+        ) : (
+          accounts.map((acc) => (
+            <View key={acc.rfid_uid} style={styles.listItem}>
+              <Text>
+                {acc.nom} {acc.prenom} — Solde: {acc.solde?.toFixed(2) || "0"}€
+              </Text>
+            </View>
+          ))
+        )}
 
-      <TouchableOpacity
-        style={styles.mainButton}
-        onPress={() => openModal(<ModalCreateAccount onClose={closeModal} />)}
-      >
-        <Text style={styles.mainButtonText}>Créer un compte</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.mainButton}
-        onPress={() => openModal(<ModalAddProduct onClose={closeModal} />)}
-      >
-        <Text style={styles.mainButtonText}>Ajouter un produit</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.mainButton}
-        onPress={() => openModal(<ModalMakePurchase onClose={closeModal} />)}
-      >
-        <Text style={styles.mainButtonText}>Faire un achat</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.mainButton}
-        onPress={() => openModal(<ModalRechargeAccount onClose={closeModal} />)}
-      >
-        <Text style={styles.mainButtonText}>Recharger un compte</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.subtitle}>Comptes :</Text>
-      <ScrollView style={{ maxHeight: 200 }}>
-        {accounts.map((a) => (
-          <View key={a.rfid_uid} style={styles.listItem}>
-            <Text>
-              {a.nom} {a.prenom} - Solde: {a.solde} €
-            </Text>
-          </View>
-        ))}
+        <Text style={[styles.title, { marginTop: 20 }]}>Produits</Text>
+        {products.length === 0 ? (
+          <Text style={{ margin: 10 }}>Aucun produit trouvé.</Text>
+        ) : (
+          products.map((prod) => (
+            <View key={prod.id} style={styles.listItem}>
+              <Text>
+                {prod.nom} — Prix: {prod.prix}€
+              </Text>
+            </View>
+          ))
+        )}
       </ScrollView>
 
-      <Text style={styles.subtitle}>Produits :</Text>
-      <ScrollView style={{ maxHeight: 200 }}>
-        {products.map((p) => (
-          <View key={p.id} style={styles.listItem}>
-            <Text>
-              {p.name} - {p.price} €
-            </Text>
-          </View>
-        ))}
-      </ScrollView>
+      <View style={styles.buttonsRow}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            setModalContent({ component: ModalCreateAccount });
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.buttonText}>Créer un compte</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            setModalContent({ component: ModalAddProduct });
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.buttonText}>Ajouter produit</Text>
+        </TouchableOpacity>
+      </View>
 
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalBackground}>
-          <View style={styles.modalContainer}>{modalContent}</View>
-        </View>
-      </Modal>
+      <View style={styles.buttonsRow}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            setModalContent({ component: ModalMakePurchase });
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.buttonText}>Acheter</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            setModalContent({ component: ModalRechargeAccount });
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.buttonText}>Recharger</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Affichage de la modale */}
+      {renderModal()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fafafa" },
-  title: { fontSize: 28, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
-  subtitle: { fontSize: 20, fontWeight: "bold", marginTop: 20, marginBottom: 10 },
-  mainButton: {
-    backgroundColor: "#007AFF",
-    padding: 15,
-    borderRadius: 8,
-    marginVertical: 6,
-  },
-  mainButtonText: { color: "white", fontSize: 18, textAlign: "center" },
+  container: { flex: 1, padding: 15, backgroundColor: "#eee", alignItems: "center" },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 10 },
   listItem: {
-    backgroundColor: "#e0e0e0",
+    backgroundColor: "#fff",
     padding: 12,
+    marginVertical: 6,
     borderRadius: 6,
-    marginVertical: 4,
+    width: "100%",
+    elevation: 2,
   },
   selectedItem: {
-    backgroundColor: "#a0caff",
+    backgroundColor: "#aaf",
+  },
+  buttonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+    marginTop: 12,
+  },
+  button: {
+    backgroundColor: "#0275d8",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginHorizontal: 4,
+  },
+  buttonDisabled: {
+    backgroundColor: "#888",
+  },
+  cancelButton: {
+    backgroundColor: "#aaa",
+  },
+  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16, textAlign: "center" },
+  input: {
+    backgroundColor: "#fff",
+    marginVertical: 8,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
   },
   modalBackground: {
     flex: 1,
@@ -456,42 +494,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 20,
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 10,
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
     padding: 20,
-    maxHeight: "90%",
   },
-  modalContent: {},
-  modalTitle: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#999",
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: "#007AFF",
-    padding: 12,
-    borderRadius: 6,
-    marginBottom: 10,
-  },
-  buttonDisabled: {
-    backgroundColor: "#999",
-  },
-  cancelButton: {
-    backgroundColor: "#999",
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    textAlign: "center",
-  },
-  message: {
-    textAlign: "center",
-    marginTop: 10,
-    color: "#333",
-  },
+  modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 15 },
+  message: { marginTop: 10, fontSize: 14, color: "gray", textAlign: "center" },
 });

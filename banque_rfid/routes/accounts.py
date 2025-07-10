@@ -20,14 +20,27 @@ def create_account(account: AccountCreate):
 
 @router.post("/{rfid_uid}/recharge")
 def recharge(rfid_uid: str, data: Recharge):
+    if data.montant <= 0:
+        raise HTTPException(status_code=400, detail="Montant doit être positif")
+
     conn = get_db()
     cur = conn.cursor()
+
+    # Vérifier existence et récupérer solde actuel
     cur.execute("SELECT solde FROM accounts WHERE rfid_uid = ?", (rfid_uid,))
-    if not cur.fetchone():
+    row = cur.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Account not found")
-    cur.execute("UPDATE accounts SET solde = solde + ? WHERE rfid_uid = ?", (data.montant, rfid_uid))
+
+    solde_actuel = row[0]
+
+    # Mettre à jour le solde
+    nouveau_solde = solde_actuel + data.montant
+    cur.execute("UPDATE accounts SET solde = ? WHERE rfid_uid = ?", (nouveau_solde, rfid_uid))
     conn.commit()
-    return {"status": "recharged"}
+
+    return {"status": "recharged", "nouveau_solde": nouveau_solde}
+
 
 @router.post("/{rfid_uid}/buy")
 def buy(rfid_uid: str, purchase: Purchase):
