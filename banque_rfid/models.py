@@ -10,6 +10,7 @@ class Recharge(BaseModel):
     montant: float
 
 class Purchase(BaseModel):
+    rfid_uid: str
     product_id: int
 
 class ProductCreate(BaseModel):
