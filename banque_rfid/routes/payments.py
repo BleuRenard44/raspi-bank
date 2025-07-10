@@ -1,29 +1,46 @@
+from typing import List
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from db import get_db
-from models import Purchase
 
 router = APIRouter()
 
+class PurchaseRequest(BaseModel):
+    rfid_uid: str
+    product_ids: List[int]
+
 @router.post("/purchase")
-def purchase(p: Purchase):
+def purchase(data: PurchaseRequest):
     conn = get_db()
-    # Utilisation de row_factory pour accéder aux colonnes par nom
     conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
     cur = conn.cursor()
 
-    cur.execute("SELECT solde FROM accounts WHERE rfid_uid = ?", (p.rfid_uid,))
+    # Vérifier l'existence de l'utilisateur et son solde
+    cur.execute("SELECT solde FROM accounts WHERE rfid_uid = ?", (data.rfid_uid,))
     row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
+    solde = row["solde"]
 
-    cur.execute("SELECT price FROM products WHERE id = ?", (p.product_id,))
-    prod = cur.fetchone()
-    if not prod:
-        raise HTTPException(status_code=404, detail="Product not found")
+    # Récupérer les prix des produits demandés
+    placeholder = ",".join("?" for _ in data.product_ids)
+    cur.execute(f"SELECT id, price FROM products WHERE id IN ({placeholder})", tuple(data.product_ids))
+    products = cur.fetchall()
 
-    if row["solde"] < prod["price"]:
+    if len(products) != len(data.product_ids):
+        raise HTTPException(status_code=404, detail="One or more products not found")
+
+    total_price = sum(prod["price"] for prod in products)
+
+    if solde < total_price:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
-    cur.execute("UPDATE accounts SET solde = solde - ? WHERE rfid_uid = ?", (prod["price"], p.rfid_uid))
+    # Déduire le total du solde
+    cur.execute("UPDATE accounts SET solde = solde - ? WHERE rfid_uid = ?", (total_price, data.rfid_uid))
     conn.commit()
-    return {"status": "purchase complete"}
+
+    return {
+        "status": "purchase complete",
+        "total_price": total_price,
+        "products_bought": [prod["id"] for prod in products],
+    }
